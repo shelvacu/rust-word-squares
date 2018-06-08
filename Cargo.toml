@@ -1,0 +1,8 @@
+[package]
+name = "rust-word-square"
+version = "0.1.0"
+authors = ["Shelvacu <shelvacu@gmail.com>"]
+
+[dependencies]
+fnv = "^1.0.3"
+unicode_skeleton = "^0.1.1"
