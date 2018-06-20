@@ -1,0 +1,7 @@
+The classic word square (but in the wrong order here):
+
+arepo
+opera
+rotas
+sator
+tenet
