@@ -1,8 +1,11 @@
 [package]
 name = "rust-word-square"
-version = "0.1.0"
+version = "1.0.0"
+description = "Finds double word squares quickly. See https://en.wikipedia.org/wiki/Word_square#Double_word_squares"
 authors = ["Shelvacu <shelvacu@gmail.com>"]
 
 [dependencies]
 fnv = "^1.0.3"
 unicode_skeleton = "^0.1.1"
+clap = "~2.31.2"
+spmc = "^0.2.2"
