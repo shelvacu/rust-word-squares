@@ -119,21 +119,111 @@ impl Default for CharSet {
 
 
 // NOTE: can only go up to 15. 16 would break everything
-const WORD_SQUARE_ORDER:usize = 7;
+//const WORD_SQUARE_ORDER:usize = 6;
+// const WORD_SQUARE_WIDTH:usize = 8;
+// const WORD_SQUARE_HEIGHT:usize = 6;
 
-const WORD_ORDER_U8:u8 = WORD_SQUARE_ORDER as u8;
+#[cfg(feature = "width-2")]
+const WORD_SQUARE_WIDTH:usize = 2;
+#[cfg(feature = "width-3")]
+const WORD_SQUARE_WIDTH:usize = 3;
+#[cfg(feature = "width-4")]
+const WORD_SQUARE_WIDTH:usize = 4;
+#[cfg(feature = "width-5")]
+const WORD_SQUARE_WIDTH:usize = 5;
+#[cfg(feature = "width-6")]
+const WORD_SQUARE_WIDTH:usize = 6;
+#[cfg(feature = "width-7")]
+const WORD_SQUARE_WIDTH:usize = 7;
+#[cfg(feature = "width-8")]
+const WORD_SQUARE_WIDTH:usize = 8;
+#[cfg(feature = "width-9")]
+const WORD_SQUARE_WIDTH:usize = 9;
+#[cfg(feature = "width-10")]
+const WORD_SQUARE_WIDTH:usize = 10;
+#[cfg(feature = "width-11")]
+const WORD_SQUARE_WIDTH:usize = 11;
+#[cfg(feature = "width-12")]
+const WORD_SQUARE_WIDTH:usize = 12;
+#[cfg(feature = "width-13")]
+const WORD_SQUARE_WIDTH:usize = 13;
+#[cfg(feature = "width-14")]
+const WORD_SQUARE_WIDTH:usize = 14;
+#[cfg(feature = "width-15")]
+const WORD_SQUARE_WIDTH:usize = 15;
 
-const WORD_SQUARE_SIZE:usize = WORD_SQUARE_ORDER * WORD_SQUARE_ORDER;
+#[cfg(feature = "height-2")]
+const WORD_SQUARE_HEIGHT:usize = 2;
+#[cfg(feature = "height-3")]
+const WORD_SQUARE_HEIGHT:usize = 3;
+#[cfg(feature = "height-4")]
+const WORD_SQUARE_HEIGHT:usize = 4;
+#[cfg(feature = "height-5")]
+const WORD_SQUARE_HEIGHT:usize = 5;
+#[cfg(feature = "height-6")]
+const WORD_SQUARE_HEIGHT:usize = 6;
+#[cfg(feature = "height-7")]
+const WORD_SQUARE_HEIGHT:usize = 7;
+#[cfg(feature = "height-8")]
+const WORD_SQUARE_HEIGHT:usize = 8;
+#[cfg(feature = "height-9")]
+const WORD_SQUARE_HEIGHT:usize = 9;
+#[cfg(feature = "height-10")]
+const WORD_SQUARE_HEIGHT:usize = 10;
+#[cfg(feature = "height-11")]
+const WORD_SQUARE_HEIGHT:usize = 11;
+#[cfg(feature = "height-12")]
+const WORD_SQUARE_HEIGHT:usize = 12;
+#[cfg(feature = "height-13")]
+const WORD_SQUARE_HEIGHT:usize = 13;
+#[cfg(feature = "height-14")]
+const WORD_SQUARE_HEIGHT:usize = 14;
+#[cfg(feature = "height-15")]
+const WORD_SQUARE_HEIGHT:usize = 15;
 
-type Word = [u8; WORD_SQUARE_ORDER];
+//const WORD_ORDER_U8:u8 = WORD_SQUARE_ORDER as u8;
+
+const WORD_SQUARE_SIZE:usize = WORD_SQUARE_WIDTH * WORD_SQUARE_HEIGHT;
+
+type WideWord = [u8; WORD_SQUARE_WIDTH];
+type TallWord = [u8; WORD_SQUARE_HEIGHT];
 type WordSquare = [u8; WORD_SQUARE_SIZE];
+
+#[derive(Debug,Default)]
+struct WordIndex {
+    inner_rows: FnvHashMap<WideWord,CharSet>,
+    #[cfg(not(feature = "square"))]
+    inner_cols: FnvHashMap<TallWord,CharSet>,
+}
+
+impl WordIndex {
+    fn rows(&self) -> &FnvHashMap<WideWord,CharSet> {
+        &self.inner_rows
+    }
+
+    fn cols(&self) -> &FnvHashMap<TallWord,CharSet> {
+        #[cfg(not(feature = "square"))]
+        return &self.inner_cols;
+        #[cfg(feature = "square")]
+        return self.rows();
+    }
+
+    fn rows_mut(&mut self) -> &mut FnvHashMap<WideWord,CharSet> {
+        &mut self.inner_rows
+    }
+
+    #[cfg(not(feature = "square"))]
+    fn cols_mut(&mut self) -> &mut FnvHashMap<TallWord,CharSet> {
+        &mut self.inner_cols
+    }
+}
 
 fn print_word_square(sq:WordSquare){
     let mut first = true;
-    for i in 0..WORD_SQUARE_ORDER {
+    for i in 0..WORD_SQUARE_HEIGHT {
         let mut chars = Vec::new();
-        for j in 0..WORD_SQUARE_ORDER {
-            chars.push(decode(sq[i*WORD_SQUARE_ORDER + j]).unwrap());
+        for j in 0..WORD_SQUARE_WIDTH {
+            chars.push(decode(sq[i*WORD_SQUARE_WIDTH + j]).unwrap());
         }
         let word = chars.iter().collect::<String>();
         if !first {
@@ -146,7 +236,7 @@ fn print_word_square(sq:WordSquare){
 }
 
 fn main() -> io::Result<()> {
-    let matches = App::new(format!("Rust Word Square Finder o{}", WORD_SQUARE_ORDER))
+    let matches = App::new(format!("Rust Word Rectangle Finder o{}x{}", WORD_SQUARE_WIDTH, WORD_SQUARE_HEIGHT))
         .version(crate_version!())
         .author(crate_authors!())
         .about(crate_description!())
@@ -194,7 +284,6 @@ fn main() -> io::Result<()> {
                          .help("The path to the wordlist to write to, or \"-\" for stdout")
                     )
         ).get_matches();
-        ;           
     
     //println!("{:?}", matches.is_present("wordlist-preprocess"));
 
@@ -285,32 +374,21 @@ fn wordlist_preprocess(args:&ArgMatches) -> io::Result<()> {
     return Ok(());
 }
 
-//static mut global_words_index:&FnvHashMap<Word,CharSet>;// = FnvHashMap::default();
+fn make_words_index(
+    f_in: impl BufRead
+) -> io::Result<(u32, u32, WordIndex)> {
+    let mut index = WordIndex::default();
 
+    let mut count_row_words = 0;
+    #[cfg(not(feature = "square"))]
+    let mut count_col_words = 0;
 
-fn compute_command(args:&ArgMatches) -> io::Result<()> {
-    //println!("{:?}", "abcdefghijklmnopqrstuvwxyz".skeleton_chars().collect::<Vec<char>>());
-    //return Ok(());
-
-    eprintln!("Word square order is {}", WORD_SQUARE_ORDER);
-    eprintln!("Start: creating index.");
-
-    let num_threads:u32 = args.value_of("threads").unwrap().parse().unwrap();
-
-    //:&'static mut FnvHashMap<Word,CharSet>
-    let mut words_index = FnvHashMap::default();
-    let mut words_list  = Vec::new();
-    //let mut unused_chars = HashMap::new();
-
-    let plain_f = File::open(args.value_of("wordlist").unwrap())?;
-    let f = BufReader::new(plain_f);
-    let lines = f.lines();
+    let lines = f_in.lines();
     for line_result in lines {
         let word = line_result?;
 
         let chars:Vec<char> = word.chars().collect();
-        //eprintln!("processing {:?} length {}", chars, chars.len());
-        if chars.len() != WORD_SQUARE_ORDER { continue }
+        if chars.len() != WORD_SQUARE_WIDTH && chars.len() != WORD_SQUARE_HEIGHT { continue }
         let mut codes = Vec::new();
         let mut all_encoded = true;
         for c in chars.clone() {
@@ -320,13 +398,6 @@ fn compute_command(args:&ArgMatches) -> io::Result<()> {
                     all_encoded = false;
 
                     continue
-                    /*
-                    if !unused_chars.contains_key(&c) {
-                        unused_chars.insert(c, 0u64);
-                    }
-                    let count = unused_chars[&c];
-                    unused_chars.insert(c, count + 1);
-                    */
                 },
             }
         }
@@ -334,29 +405,75 @@ fn compute_command(args:&ArgMatches) -> io::Result<()> {
             eprintln!("Skipping {:?}, not all could be encoded",chars);
             continue
         }
-        assert_eq!(codes.len(), WORD_SQUARE_ORDER);
-        let mut word = Word::default();
-        for (i, code) in codes.iter().enumerate() {
-            word[i] = *code;
-        }
-        words_list.push(word.clone());
-        for j in 0..WORD_SQUARE_ORDER {
-            let i = (WORD_SQUARE_ORDER - 1) - j;
-            // for i in WORD_SQUARE_ORDER..0 including 0, excluding WORD_SQUARE_ORDER
-            let code = word[i];
-            word[i] = 255u8;
-            if !words_index.contains_key(&word) {
-                //println!("Inserting {:?}", word);
-                words_index.insert(word, CharSet::default());
+        if codes.len() == WORD_SQUARE_WIDTH {
+            count_row_words += 1;
+            let words_index = index.rows_mut();
+            let mut word = WideWord::default();
+            for (i, code) in codes.iter().enumerate() {
+                word[i] = *code;
             }
-            words_index.get_mut(&word).unwrap().add(code);
+            for j in 0..WORD_SQUARE_WIDTH {
+                let i = (WORD_SQUARE_WIDTH - 1) - j;
+                // for i in WORD_SQUARE_ORDER..0 including 0, excluding WORD_SQUARE_ORDER
+                let code = word[i];
+                word[i] = 255u8;
+                if !words_index.contains_key(&word) {
+                    //println!("Inserting {:?}", word);
+                    words_index.insert(word, CharSet::default());
+                }
+                words_index.get_mut(&word).unwrap().add(code);
+            }
+        }
+        #[cfg(not(feature = "square"))]
+        if codes.len() == WORD_SQUARE_HEIGHT {
+            count_col_words += 1;
+            let words_index = index.cols_mut();
+            let mut word = TallWord::default();
+            for (i, code) in codes.iter().enumerate() {
+                word[i] = *code;
+            }
+            for j in 0..WORD_SQUARE_HEIGHT {
+                let i = (WORD_SQUARE_HEIGHT - 1) - j;
+                // for i in WORD_SQUARE_ORDER..0 including 0, excluding WORD_SQUARE_ORDER
+                let code = word[i];
+                word[i] = 255u8;
+                if !words_index.contains_key(&word) {
+                    //println!("Inserting {:?}", word);
+                    words_index.insert(word, CharSet::default());
+                }
+                words_index.get_mut(&word).unwrap().add(code);
+            }
         }
     }
 
-    if words_index.len() == 0 {
+    #[cfg(feature = "square")]
+    let count_col_words = count_row_words;
+
+    return Ok((count_row_words, count_col_words, index));
+}
+
+fn compute_command(args:&ArgMatches) -> io::Result<()> {
+    //println!("{:?}", "abcdefghijklmnopqrstuvwxyz".skeleton_chars().collect::<Vec<char>>());
+    //return Ok(());
+
+    eprintln!("Word square order is {}x{}", WORD_SQUARE_WIDTH, WORD_SQUARE_HEIGHT);
+    eprintln!("Start: creating index.");
+
+    let num_threads:u32 = args.value_of("threads").unwrap().parse().unwrap();
+
+    //:&'static mut FnvHashMap<Word,CharSet>
+    // let mut words_index = FnvHashMap::default();
+    // let mut words_list  = Vec::new();
+    //let mut unused_chars = HashMap::new();
+
+    let plain_f = File::open(args.value_of("wordlist").unwrap())?;
+    let f = BufReader::new(plain_f);
+    
+    let (count_row_words, count_col_words, index) = make_words_index(f)?;
+    if index.rows().len() == 0 || index.cols().len() == 0 {
         panic!("No words in wordlist!");
     }
-    eprintln!("Finished creating index, {} words.", words_list.len());
+    eprintln!("Finished creating index, {} words x {} words.", count_row_words, count_col_words);
 
 
     let (m2w_tx, m2w_rx) = spmc::channel::<(WordSquare,u8)>();
@@ -364,16 +481,18 @@ fn compute_command(args:&ArgMatches) -> io::Result<()> {
     let mut worker_handles = Vec::new();
 
     eprintln!("Creating {} worker threads.", num_threads);
+
+    let index_arc = std::sync::Arc::new(index);
     
     for _ in 0..num_threads {
         let rxc = m2w_rx.clone();
         let txc = w2m_tx.clone();
-        let my_word = words_index.clone();
+        let my_index = std::sync::Arc::clone(&index_arc);
         worker_handles.push(
             thread::spawn( move || {
                 while let Ok(msg) = rxc.recv() {
                     compute(
-                        &my_word,
+                        &my_index,
                         msg.0,
                         msg.1,
                         WORD_SQUARE_SIZE as u8,
@@ -397,10 +516,10 @@ fn compute_command(args:&ArgMatches) -> io::Result<()> {
     eprintln!("Starting.");
     
     compute(
-        &words_index,
+        index_arc.as_ref(),
         code_array,
         0u8,
-        WORD_ORDER_U8,
+        WORD_SQUARE_WIDTH as u8,
         |ca, idx| m2w_tx.send((ca,idx)).unwrap()
     );
 
@@ -425,7 +544,7 @@ const DEBUG_MODE:bool = false;
 
 
 fn compute<T:FnMut(WordSquare,u8)>(
-    words_index_arg:&FnvHashMap<Word, CharSet>,
+    words_index_arg:&WordIndex,
     mut code_array:WordSquare,
     start_idx:u8,
     target_idx:u8,
@@ -435,20 +554,20 @@ fn compute<T:FnMut(WordSquare,u8)>(
     let mut charset_array = [CharSet::new(std::u32::MAX); WORD_SQUARE_SIZE];
 
 
-    let row_idx = at_idx / WORD_ORDER_U8;
-    let col_idx = at_idx % WORD_ORDER_U8;
-    let row_start = row_idx*WORD_ORDER_U8;
-    let mut row_word = [255u8; WORD_SQUARE_ORDER];
+    let row_idx = at_idx / (WORD_SQUARE_WIDTH as u8);
+    let col_idx = at_idx % (WORD_SQUARE_WIDTH as u8);
+    let row_start = row_idx*(WORD_SQUARE_WIDTH as u8);
+    let mut row_word = [255u8; WORD_SQUARE_WIDTH];
     for i in 0..col_idx {
         row_word[i as usize] = code_array[ (row_start+i) as usize ];
     }
-    let row_wordset = words_index_arg[&row_word];
+    let row_wordset = words_index_arg.rows()[&row_word];
 
-    let mut col_word = [255u8; WORD_SQUARE_ORDER];
+    let mut col_word = [255u8; WORD_SQUARE_HEIGHT];
     for i in 0..row_idx {
-        col_word[i as usize] = code_array[ (col_idx + i*WORD_ORDER_U8) as usize ];
+        col_word[i as usize] = code_array[ (col_idx + i*(WORD_SQUARE_WIDTH as u8)) as usize ];
     }
-    let col_wordset = words_index_arg[&col_word];
+    let col_wordset = words_index_arg.cols()[&col_word];
     
     charset_array[at_idx as usize] = col_wordset.and(&row_wordset);
 
@@ -469,11 +588,11 @@ fn compute<T:FnMut(WordSquare,u8)>(
 
 
         if DEBUG_MODE {
-            let row_idx = at_idx / WORD_ORDER_U8;
-            let col_idx = at_idx % WORD_ORDER_U8;
-            for row in 0..WORD_SQUARE_ORDER {
-                for col in 0..WORD_SQUARE_ORDER {
-                    print!("{}, ", decode(code_array[row*WORD_SQUARE_ORDER + col]).unwrap());
+            let row_idx = at_idx / (WORD_SQUARE_WIDTH as u8);
+            let col_idx = at_idx % (WORD_SQUARE_WIDTH as u8);
+            for row in 0..WORD_SQUARE_HEIGHT {
+                for col in 0..WORD_SQUARE_WIDTH {
+                    print!("{}, ", decode(code_array[row*WORD_SQUARE_WIDTH + col]).unwrap());
                 }
                 println!();
             }
@@ -496,22 +615,22 @@ fn compute<T:FnMut(WordSquare,u8)>(
             } else {
                 code_array[at_idx as usize] = 255;
 
-                let row_idx = at_idx / WORD_ORDER_U8;
-                let col_idx = at_idx % WORD_ORDER_U8;
-                let row_start = row_idx*WORD_ORDER_U8;
-                let mut row_word = [255u8; WORD_SQUARE_ORDER];
+                let row_idx = at_idx / (WORD_SQUARE_WIDTH as u8);
+                let col_idx = at_idx % (WORD_SQUARE_WIDTH as u8);
+                let row_start = row_idx*(WORD_SQUARE_WIDTH as u8);
+                let mut row_word = [255u8; WORD_SQUARE_WIDTH];
                 for i in 0..col_idx {
                     row_word[i as usize] = code_array[ (row_start+i) as usize ];
                 }
                 //println!("row_word {:?}", row_word);
-                let row_wordset = words_index_arg[&row_word];
+                let row_wordset = words_index_arg.rows()[&row_word];
 
-                let mut col_word = [255u8; WORD_SQUARE_ORDER];
+                let mut col_word = [255u8; WORD_SQUARE_HEIGHT];
                 for i in 0..row_idx {
-                    col_word[i as usize] = code_array[ (col_idx + i*WORD_ORDER_U8) as usize ];
+                    col_word[i as usize] = code_array[ (col_idx + i*(WORD_SQUARE_WIDTH as u8)) as usize ];
                 }
                 //println!("col_word {:?}", row_word);
-                let col_wordset = words_index_arg[&col_word];
+                let col_wordset = words_index_arg.cols()[&col_word];
                 
                 charset_array[at_idx as usize] = col_wordset.and(&row_wordset);
             }

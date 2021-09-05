@@ -9,3 +9,37 @@ fnv = "^1.0.3"
 unicode_skeleton = "^0.1.1"
 clap = "~2.31.2"
 spmc = "^0.2.2"
+
+[features]
+# To indicate that width is the same as height.
+square = []
+width-2 = []
+width-3 = []
+width-4 = []
+width-5 = []
+width-6 = []
+width-7 = []
+width-8 = []
+width-9 = []
+width-10 = []
+width-11 = []
+width-12 = []
+width-13 = []
+width-14 = []
+width-15 = []
+height-2 = []
+height-3 = []
+height-4 = []
+height-5 = []
+height-6 = []
+height-7 = []
+height-8 = []
+height-9 = []
+height-10 = []
+height-11 = []
+height-12 = []
+height-13 = []
+height-14 = []
+height-15 = []
+
+default = ["width-8", "height-5"]
