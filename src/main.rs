@@ -73,12 +73,12 @@ make_encode_decode!{
     21 => 'z';
     22 => 'j';
     23 => 'x';
-    24 => 'A';//'\'';
-    25 => 'B';//'-';
-    26 => 'C';//'è';
-    27 => 'D';//'ê';
-    28 => 'E';//'ñ';
-    29 => 'F';//'é';
+    24 => '\'';
+    25 => '-';
+    26 => 'è';
+    27 => 'ê';
+    28 => 'ñ';
+    29 => 'é';
     30 => 'm';
     31 => 'q';
 }
@@ -242,47 +242,60 @@ fn main() -> io::Result<()> {
         .about(crate_description!())
         .setting(clap::AppSettings::SubcommandRequired)
         .subcommand(SubCommand::with_name("compute")
-                    .about("Does the actual computation.")
-                    .arg(Arg::with_name("threads")
-                         .default_value("4")
-                         .takes_value(true)
-                         .validator(|arg| {
-                             match arg.parse::<u32>() {
-                                 Ok(_) => Ok(()),
-                                 Err(e) => Err(String::from(format!("Must provide a valid integer. {:?}", e))),
-                             }
-                         })
-                         .help("Number of threads to use.")
-                         .long("threads")
-                         .short("t")
-                    )
-                    .arg(Arg::with_name("wordlist")
-                         .required(true)
-                         .help("the wordlist file path, a plain-text UTF-8 file with each word separated by a newline")
-                    )
+            .about("Does the actual computation.")
+            .arg(Arg::with_name("threads")
+                .default_value("4")
+                .takes_value(true)
+                .validator(|arg| {
+                    match arg.parse::<u32>() {
+                        Ok(_) => Ok(()),
+                        Err(e) => Err(String::from(format!("Must provide a valid integer. {:?}", e))),
+                    }
+                })
+                .help("Number of threads to use.")
+                .long("threads")
+                .short("t")
+            )
+            .arg(Arg::with_name("wordlist")
+                .required(true)
+                .help("the wordlist file path, a plain-text UTF-8 file with each word separated by a newline")
+            )
+            .arg(Arg::with_name("ignore-empty-wordlist")
+                .long("ignore-empty-wordlist")
+                .help("Don't complain if there are no words of the necessary length in the given wordlist")
+            )
+            .arg(Arg::with_name("ignore-unencodeable")
+                .long("ignore-unencodeable")
+                .help("Don't show a warning when a word is dropped because it contains unencodeable characters.")
+            )
+            .arg(Arg::with_name("quiet")
+                .long("quiet")
+                .short("q")
+                .help("Don't show any status messages; STDERR will be empty if no errors occured.")
+            )
         )
         .subcommand(SubCommand::with_name("wordlist-preprocess")
-                    .about("Takes in a wordlist (of various formats) and converts characters to a consistent set, for example 'а' (U+0430 CYRILLIC SMALL LETTER A) becomes 'a' (U+0061 LATIN SMALL LETTER A). Any words that would be ignored by the compute function are also filtered out.")
-                    .arg(Arg::with_name("wiktionary-list-format")
-                         .long("wiktionary-format")
-                         .short("w")
-                         .long_help("Input wordlist is in wiktionary \"all-titles\" format.")
-                         .group("format")
-                    )
-                    .arg(Arg::with_name("plain-list-format")
-                         .long("plain-format")
-                         .short("p")
-                         .long_help("Input wordlist is a plaintext UTF-8 newline-separated list of words")
-                         .group("format")
-                    )
-                    .arg(Arg::with_name("input-filename")
-                         .required(true)
-                         .help("The path to the wordlist to read from, or \"-\" for stdin")
-                    )
-                    .arg(Arg::with_name("output-filename")
-                         .required(true)
-                         .help("The path to the wordlist to write to, or \"-\" for stdout")
-                    )
+            .about("Takes in a wordlist (of various formats) and converts characters to a consistent set, for example 'а' (U+0430 CYRILLIC SMALL LETTER A) becomes 'a' (U+0061 LATIN SMALL LETTER A). Any words that would be ignored by the compute function are also filtered out.")
+            .arg(Arg::with_name("wiktionary-list-format")
+                .long("wiktionary-format")
+                .short("w")
+                .long_help("Input wordlist is in wiktionary \"all-titles\" format.")
+                .group("format")
+            )
+            .arg(Arg::with_name("plain-list-format")
+                .long("plain-format")
+                .short("p")
+                .long_help("Input wordlist is a plaintext UTF-8 newline-separated list of words")
+                .group("format")
+            )
+            .arg(Arg::with_name("input-filename")
+                .required(true)
+                .help("The path to the wordlist to read from, or \"-\" for stdin")
+            )
+            .arg(Arg::with_name("output-filename")
+                .required(true)
+                .help("The path to the wordlist to write to, or \"-\" for stdout")
+            )
         ).get_matches();
     
     //println!("{:?}", matches.is_present("wordlist-preprocess"));
@@ -375,7 +388,8 @@ fn wordlist_preprocess(args:&ArgMatches) -> io::Result<()> {
 }
 
 fn make_words_index(
-    f_in: impl BufRead
+    f_in: impl BufRead,
+    ignore_unencodeable: bool,
 ) -> io::Result<(u32, u32, WordIndex)> {
     let mut index = WordIndex::default();
 
@@ -402,7 +416,9 @@ fn make_words_index(
             }
         }
         if !all_encoded {
-            eprintln!("Skipping {:?}, not all could be encoded",chars);
+            if !ignore_unencodeable {
+                eprintln!("Skipping {:?}, not all could be encoded",chars);
+            }
             continue
         }
         if codes.len() == WORD_SQUARE_WIDTH {
@@ -453,34 +469,35 @@ fn make_words_index(
 }
 
 fn compute_command(args:&ArgMatches) -> io::Result<()> {
-    //println!("{:?}", "abcdefghijklmnopqrstuvwxyz".skeleton_chars().collect::<Vec<char>>());
-    //return Ok(());
+    let loud = !args.is_present("quiet");
+    let ignore_empty_wordlist = args.is_present("ignore-empty-wordlist");
+    let ignore_unencodeable = args.is_present("ignore-unencodeable");
 
-    eprintln!("Word square order is {}x{}", WORD_SQUARE_WIDTH, WORD_SQUARE_HEIGHT);
-    eprintln!("Start: creating index.");
+    if loud {
+        eprintln!("Word square order is {}x{}", WORD_SQUARE_WIDTH, WORD_SQUARE_HEIGHT);
+        eprintln!("Start: creating index.");
+    }
 
     let num_threads:u32 = args.value_of("threads").unwrap().parse().unwrap();
-
-    //:&'static mut FnvHashMap<Word,CharSet>
-    // let mut words_index = FnvHashMap::default();
-    // let mut words_list  = Vec::new();
-    //let mut unused_chars = HashMap::new();
 
     let plain_f = File::open(args.value_of("wordlist").unwrap())?;
     let f = BufReader::new(plain_f);
     
-    let (count_row_words, count_col_words, index) = make_words_index(f)?;
-    if index.rows().len() == 0 || index.cols().len() == 0 {
+    let (count_row_words, count_col_words, index) = make_words_index(f, ignore_unencodeable)?;
+    if !ignore_empty_wordlist && (index.rows().is_empty() || index.cols().is_empty()) {
         panic!("No words in wordlist!");
     }
-    eprintln!("Finished creating index, {} words x {} words.", count_row_words, count_col_words);
-
+    if loud {
+        eprintln!("Finished creating index, {} words x {} words.", count_row_words, count_col_words);
+    }
 
     let (m2w_tx, m2w_rx) = spmc::channel::<(WordSquare,u8)>();
     let (w2m_tx, w2m_rx) = std::sync::mpsc::sync_channel(16);
     let mut worker_handles = Vec::new();
 
-    eprintln!("Creating {} worker threads.", num_threads);
+    if loud {
+        eprintln!("Creating {} worker threads.", num_threads);
+    }
 
     let index_arc = std::sync::Arc::new(index);
     
@@ -513,7 +530,9 @@ fn compute_command(args:&ArgMatches) -> io::Result<()> {
     
     let code_array = [255u8; WORD_SQUARE_SIZE];
 
-    eprintln!("Starting.");
+    if loud {
+        eprintln!("Starting.");
+    }
     
     compute(
         index_arc.as_ref(),

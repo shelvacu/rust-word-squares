@@ -1,7 +1,7 @@
 [package]
 name = "rust-word-square"
-version = "1.0.0"
-description = "Finds double word squares quickly. See https://en.wikipedia.org/wiki/Word_square#Double_word_squares"
+version = "1.1.0"
+description = "Finds word squares and word rectangles quickly. See https://en.wikipedia.org/wiki/Word_square#Double_word_squares"
 authors = ["Shelvacu <shelvacu@gmail.com>"]
 
 [dependencies]
@@ -13,6 +13,7 @@ spmc = "^0.2.2"
 [features]
 # To indicate that width is the same as height.
 square = []
+
 width-2 = []
 width-3 = []
 width-4 = []
